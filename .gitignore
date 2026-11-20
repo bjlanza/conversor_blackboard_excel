@@ -1,0 +1,7 @@
+# Solo se sube lo que GitHub Pages necesita: docs/index.html.
+# Todo lo demás (fuente, build, pruebas, entorno, datos) se queda en local.
+*
+!.gitignore
+!README.md
+!docs/
+!docs/index.html
