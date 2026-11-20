@@ -62,8 +62,8 @@ details summary{cursor:pointer;color:var(--teal);font-weight:600;margin-top:.3re
 
 <main>
   <h1><span>Banco de Blackboard a Excel</span></h1>
-  <p class="lead">Arrastra aquí uno o varios ZIP exportados de Blackboard (bancos de preguntas), indica el RA y el tema de cada uno y descarga el Excel en el formato
-    de la plantilla del simulador. <b>Todo se hace en tu navegador:</b> los archivos no se suben a ningún servidor.</p>
+  <p class="lead">Arrastra aquí uno o varios ZIP exportados de Blackboard (bancos de preguntas), indica el RA y el tema de cada uno y descarga su estructura
+    en <b>Excel</b> (formato de la plantilla del simulador) o en <b>JSON</b>. Solo convierte lo que trae el banco: no genera ni mejora explicaciones. <b>Todo se hace en tu navegador:</b> los archivos no se suben a ningún servidor.</p>
 
   <div id="zona" tabindex="0">
     <p><b>Suelta aquí los ZIP</b></p>
@@ -76,6 +76,7 @@ details summary{cursor:pointer;color:var(--teal);font-weight:600;margin-top:.3re
 
   <div class="barra" id="barra" hidden>
     <button id="descargar" type="button">Descargar Excel</button>
+    <button id="descargar-json" type="button" class="sec">Descargar JSON</button>
     <button id="vaciar" type="button" class="sec">Quitar todos</button>
     <span id="resumen" class="nota"></span>
   </div>
@@ -191,7 +192,7 @@ function pintar() {
   const inc = BANCOS.filter(b => b.incluir);
   const total = inc.reduce((s, b) => s + b.preguntas.length, 0);
   $("#barra").hidden = !BANCOS.length;
-  $("#descargar").disabled = !total || inc.some(b => !b.ra.trim() || !b.tema.trim());
+  $("#descargar").disabled = $("#descargar-json").disabled = !total || inc.some(b => !b.ra.trim() || !b.tema.trim());
   $("#resumen").textContent = !BANCOS.length ? "" : inc.some(b => !b.ra.trim() || !b.tema.trim())
     ? "Rellena el RA y el tema de cada banco incluido."
     : `${total} preguntas de ${inc.length} banco(s)`;
@@ -203,7 +204,7 @@ $("#bancos").addEventListener("input", e => {
   if (c === "incluir") b.incluir = el.checked;
   else if (c === "ra") b.ra = el.value.trim().toUpperCase().replace(/\s+/g, "");
   else b.tema = numero(el.value);
-  if (c === "incluir") pintar(); else { const inc = BANCOS.filter(x => x.incluir); $("#descargar").disabled = !inc.length || inc.some(x => !x.ra.trim() || !x.tema.trim()); }
+  if (c === "incluir") pintar(); else { const inc = BANCOS.filter(x => x.incluir); $("#descargar").disabled = $("#descargar-json").disabled = !inc.length || inc.some(x => !x.ra.trim() || !x.tema.trim()); }
 });
 $("#bancos").addEventListener("change", e => {            // al salir del campo se muestra el valor normalizado
   const el = e.target.closest("[data-campo=ra], [data-campo=tema]"); if (!el) return;
@@ -248,15 +249,26 @@ async function construirXlsx(filas) {
   return z.generateAsync({type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", compression: "DEFLATE"});
 }
 
-$("#descargar").onclick = async () => {
-  const orden = (a, b) => (+numero(a.ra) - +numero(b.ra)) || a.ra.localeCompare(b.ra, "es", {numeric: true});
-  const filas = [];
-  [...BANCOS.filter(b => b.incluir)].sort(orden).forEach(b => b.preguntas.forEach(p =>
-    filas.push([numero(b.tema), b.ra, p.question, ...p.options, p.answer, p.explanation, ""])));
-  const blob = await construirXlsx(filas);
+function bajar(blob, nombre) {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = "preguntas_banco.xlsx"; document.body.appendChild(a); a.click();
+  a.href = URL.createObjectURL(blob); a.download = nombre; document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+const incluidos = () => [...BANCOS.filter(b => b.incluir)].sort((a, b) => (+numero(a.ra) - +numero(b.ra)) || a.ra.localeCompare(b.ra, "es", {numeric: true}));
+
+// JSON con la estructura tal cual se lee (sin ningún enriquecimiento): un banco por ZIP con sus preguntas.
+$("#descargar-json").onclick = () => {
+  const datos = {formato: "banco-blackboard", version: 1, bancos: incluidos().map(b => ({
+    titulo: b.titulo, archivo: b.archivo, ra: b.ra, tema: numero(b.tema),
+    preguntas: b.preguntas.map(p => ({question: p.question, options: p.options, answer: p.answer, explanation: p.explanation}))}))};
+  bajar(new Blob([JSON.stringify(datos, null, 2)], {type: "application/json"}), "preguntas_banco.json");
+  aviso(`JSON descargado con ${datos.bancos.reduce((n, b) => n + b.preguntas.length, 0)} preguntas.`);
+};
+
+$("#descargar").onclick = async () => {
+  const filas = [];
+  incluidos().forEach(b => b.preguntas.forEach(p => filas.push([numero(b.tema), b.ra, p.question, ...p.options, p.answer, p.explanation, ""])));
+  bajar(await construirXlsx(filas), "preguntas_banco.xlsx");
   aviso(`Excel descargado con ${filas.length} preguntas.`);
 };
 </script>
